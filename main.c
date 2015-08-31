@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <Math.h>
 
 
 /**
@@ -42,7 +41,16 @@ void printData(Data data);
  */
 void freeData(Data *data);
 
-
+/**
+ * Preapre the Matrix A and the Array B
+ * 
+ * When using the Jacobi-Richardson method we have A* = L* + I* + R* where
+ * A* is the matrix A by its main diagonal
+ * 
+ * We have to perform the same calculation for the Array B
+ *
+ */
+void prepareMatrices(Data *data);
 
 
 /**
@@ -72,16 +80,43 @@ int main(int argc, char* argv[]){
     readFromFile(file, myData);
 
     // print Data for testing
-    printData(*myData); 
+    printData(*myData);
 
+    prepareMatrices(myData);
+    
+    printData(*myData);
     // Free allocated memory
     freeData(myData);
     fclose(file);
 
     return 0;
+}  
+
+
+void prepareMatrices(Data *data){
+
+    // control variables
+    int i, j;
+
+    // For each item in the Matrix A ...
+    for(i = 0; i < data->J_ORDER; i++){
+       for(j = 0; j < data->J_ORDER; j++){
+           // We divide the position by the correpondent diagonal value
+            data->Ma[i][j] = data->Ma[i][j] / data->Ma[i][i];
+       }
+       // Divide the array B by the respective diagonal value
+       data->Mb[i] = data->Mb[i] / data->Ma[i][i];
+    }
 }
 
-void 
+
+void JacobiRichardson(Data *data){
+    
+    
+
+
+    return;
+}
 
 
 int readFromFile(FILE *file, Data *data){
