@@ -52,6 +52,23 @@ void freeData(Data *data);
  */
 void prepareMatrices(Data *data);
 
+/**
+ * The iterative method itself
+ *
+ * It calculates X(k+1) = -(L* + R*)x(k) + b*
+ * whlie the error < J_ERROR or number of iterations reached < J_ITE_MAX
+ *
+ */
+void JacobiRichardson(Data *data);
+
+/**
+ * Calcuates the aboslute error
+ * E = || x_current - x_next || 
+ *
+ * The algorithm wont stop until E < J_ERROR
+ *
+ */
+double getError(double *x_current, double *x_next);
 
 /**
  * Main function
@@ -80,13 +97,14 @@ int main(int argc, char* argv[]){
     readFromFile(file, myData);
 
     // print Data for testing
-    printData(*myData);
+    //printData(*myData);
 
     prepareMatrices(myData);
     
-    printData(*myData);
+    //printData(*myData);
     // Free allocated memory
     freeData(myData);
+
     fclose(file);
 
     return 0;
@@ -105,19 +123,50 @@ void prepareMatrices(Data *data){
             data->Ma[i][j] = data->Ma[i][j] / data->Ma[i][i];
        }
        // Divide the array B by the respective diagonal value
+       //printf("%lf / %lf = ", data->Mb[i], data->Ma[i][i]);
        data->Mb[i] = data->Mb[i] / data->Ma[i][i];
+ 
+       //printf("%lf\n", data->Mb[i]);
     }
 }
 
 
 void JacobiRichardson(Data *data){
+  
+    // Current x value, initial value is 0 for sake of simplicity
+    double* x_current;
     
+    // X(k+1)
+    double* x_next;   
+
+    double error;
     
+    // Variable to keep track the number of iterations
+    int iterations = 0;
 
+    // Allocates memory for the x values, final awnser will be placed at x_next
+    x_current = (double*) calloc(sizeof(double), data->J_ORDER);
+    x_next = (double*) malloc(sizeof(double) * data->J_ORDER);
 
-    return;
+    // The calculation is not over until the error is lesser than J_ERROR or
+    // we have't reach the maxium number of iterations allowed
+    while (error > data->J_ERROR || iterations < data->J_ITE_MAX){
+  
+
+        // perform the error calculus
+        error = getError(x_current, x_next);
+        iterations++; 
+    }
+
+    printf("Number of iterations: %d\n", iterations);
 }
 
+double getError(double *x_current, double *x_next){
+
+    double error = 0;
+
+    return error;
+}
 
 int readFromFile(FILE *file, Data *data){
 
