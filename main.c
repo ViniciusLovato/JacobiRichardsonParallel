@@ -18,6 +18,8 @@ typedef struct {
     int J_ROW_TEST;
     double J_ERROR;
     int J_ITE_MAX;
+    double *testedRow;
+    double testedB;
     double **Ma;
     double *Mb;
 
@@ -104,12 +106,10 @@ int main(int argc, char* argv[]){
     readFromFile(file, myData);
 
     // print Data for testing
-    //printData(*myData);
-
+    
     prepareMatrices(myData);
-    //JacobiRichardson(myData);
+    JacobiRichardson(myData);
 
-    printData(*myData);
     // Free allocated memory
     freeData(myData);
 
@@ -123,23 +123,21 @@ void prepareMatrices(Data *data){
 
     // control variables
     int i, j;
-
+    double currentDiagonal;
+        
     // For each item in the Matrix A ...
     for(i = 0; i < data->J_ORDER; i++){
-       
-       data->Mb[i] = data->Mb[i] / data->Ma[i][i];
+      
+       currentDiagonal = data->Ma[i][i];
+
+       data->Mb[i] = data->Mb[i] / currentDiagonal;
        for(j = 0; j < data->J_ORDER; j++){
            // We divide the position by the correpondent diagonal value
-            data->Ma[i][j] = data->Ma[i][j] / data->Ma[i][i];
-            printf("%lf ", data->Ma[i][j]);
+            //printf("%lf / %lf\n", data->Ma[i][j], currentDiagonal);
+            data->Ma[i][j] = data->Ma[i][j] / currentDiagonal;
        }
-       printf("\n");
        // Divide the array B by the respective diagonal value
-       data->Ma[i][i] = 0; 
-    }
-
-    for(i = 0; i < data->J_ORDER; i++){
-        printf("%lf\n", data->Mb[i]);
+       data->Ma[i][i] = 0;
     }
 }
 
@@ -173,13 +171,12 @@ void JacobiRichardson(Data *data){
 
     // The calculation is not over until the error is lesser than J_ERROR or
     // we haven't reach the maxium number of iterations allowed
-   
+    
     do{
+            LRx(data, x_current, lrx_result);
 
-        LRx(data, x_current, lrx_result);
-
-        for(i = 0; i < data->J_ORDER; i++){
-           x_next[i] = - lrx_result[i] + data->Mb[i];  
+       for(i = 0; i < data->J_ORDER; i++){
+            x_next[i] = - lrx_result[i] + data->Mb[i];  
         }
 
         // perform the error calculus
@@ -191,28 +188,38 @@ void JacobiRichardson(Data *data){
         x_current = x_next;
         x_next = temp;
 
-    } while (error > data->J_ERROR || iterations < data->J_ITE_MAX);
+
+        // printf("error %lf > %lf data->J_ERROR\n", error, data->J_ERROR);
+
+    } while (error > data->J_ERROR && iterations < data->J_ITE_MAX);
 
     // Calculates the value for row J_ROW_TEST
     double row_test_result = 0;
 
+    double result = 0;
+    for(i = 0; i < data->J_ORDER; i++){
+        result = result + data->testedRow[i]*x_current[i];  
+    }
     printf("Iterations: %d\n", iterations);
-    printf("RowTest: %d => [] =? []\n", data->J_ROW_TEST);
+    printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
 }
 
 
 
 void LRx(Data *data, double* x_current, double* lrxresult){
 
-      int i, j, k;
-      double temp_result = 0;
+    int i, j, k;
+    double temp_result = 0;
 
-      for(i = 0; i < data->J_ORDER; i++){
-          for(j = 0; j < data->J_ORDER; j++){
-                temp_result = temp_result + data->Ma[i][j] *  x_current[i];
-          }
-          lrxresult[i] = temp_result;
-      }
+
+    for(i = 0; i < data->J_ORDER; i++){
+        temp_result = 0;
+        for(j = 0; j < data->J_ORDER; j++){
+            temp_result = temp_result + data->Ma[i][j] *  x_current[j];
+
+        }
+        lrxresult[i] = temp_result;
+    }
 }
 
 double getError(double *x_current, double *x_next, int size){
@@ -231,6 +238,7 @@ double getError(double *x_current, double *x_next, int size){
         if(errorArray[i] > max)
             max = errorArray[i];
     }
+
     return max;
 }
 
@@ -258,11 +266,17 @@ int readFromFile(FILE *file, Data *data){
     // Allocating memory for B array
     data->Mb = (double*) malloc(sizeof(double)*data->J_ORDER);
 
-
     // Reading Array B from file
     for(i = 0; i < data->J_ORDER; i++){
         fscanf(file, "%lf", &data->Mb[i]);
     }
+
+    data->testedRow = (double*) malloc(sizeof(double)*data->J_ORDER);
+    for(i = 0; i < data->J_ORDER; i++){
+        data->testedRow[i] = data->Ma[data->J_ROW_TEST][i];
+    }
+
+    data->testedB = data->Mb[data->J_ROW_TEST];
 }
 
 
@@ -270,6 +284,9 @@ int readFromFile(FILE *file, Data *data){
 void printData(Data data){
 
     int i, j;
+
+    printf("\nPrint Data\n");
+    printf("=================================\n");
 
     printf("J_ORDER: %d\nJ_ROW_TEST: %d\nJ_ERROR: %lf\n", data.J_ORDER, data.J_ROW_TEST, data.J_ERROR);
 
