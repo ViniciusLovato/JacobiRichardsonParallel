@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
-
+#include <pthread.h>
 
 /**
- * Structure that hold all the information about the problem
+ * Structure that hold all the information relevant information
  * J_ORDER : Matrix Order
  * J_ROW_TEST: Row that will be used to test the result
  * J_ERROR: Error value acceptable
@@ -22,8 +22,45 @@ typedef struct {
     double testedB;
     double **Ma;
     double *Mb;
+    int numberOfThreads;
 
 } Data;
+
+// This structure is a workaround because the thread initialization function
+// receives only one argument
+typedef struct{
+    int start;
+    int end;
+    int J_ORDER;
+    double **Ma;
+    double *Mb;
+    double *x_current;
+    double *x_next;
+
+} ThreadData;
+
+
+/**
+ *
+ * For the sake of simplicty this variables will be declared as global. Dont
+ * worry, I know what I'm doing
+ *
+ * Threads used to calculate each matrix block
+ *
+ */
+typedef struct {
+
+    pthread_t pthread;
+    int start;
+    int end;
+} pthreadStructure;
+
+pthreadStructure *pthreads;
+
+// Barrier created to sync all the threads
+// This is necessary in order guarantee that all the threads are calculating
+// the same value of x (awnser array)
+pthread_barrier_t barrier;
 
 /**
  * Read data from file.
@@ -77,19 +114,48 @@ double getError(double *x_current, double *x_next, int size);
  * Calculates -(L* + R*)x
  *
  */
-void LRx(Data *data, double* x_current, double* lrxresult);
+void LRx(Data *data, double* x_current, double* x_next);
+
+/**
+ * Function that shall be passed to each thread
+ * 
+ * Each thread will be responsible for a part of the matrix. We will divide the
+ * matrix in several blocks according to the number of threads required by the
+ * user
+ *
+ * In order to keep the result consistent we have to user a barrier to sync all
+ * the threads. This must be done at the end of each iteration, after that all
+ * the threads can proceed to do the next iteration
+ *
+ * int start/end: Range of rows that the threads will be responsible
+ * int J_ORDER: Matriz Order
+ * double** Ma: Pointer to Matrix A
+ * double *Mb: Pointer to array B
+ * double *x_current: Pointer to the current x_values (also know as xk)
+ * double *x_next: Pointer to the values being calculated by this iteration
+ * (also know as xk+1)
+ *
+ */
+void* calculateBlock(ThreadData *tData);
+
+/**
+ * Set the workload of each thread according to the matrix order and number of
+ * threads available. Threads are global, so it does required any parameters
+ *
+ */
+void prepareThreads(int numberOfThreads, int matrixOrder);
 
 /**
  * Main function
  *
  */
 int main(int argc, char* argv[]){
-    
+
     int i, j;
 
     // if the user has not passed the file path as argument
-    if(argc < 2){
-        printf("Invalid number of arguments: ./main matrix.txt\n");
+    if(argc < 3){
+        printf("Invalid number of arguments: ./main matrix.txt THREADS_NUMBER\n");
         return 1;
     }
 
@@ -102,16 +168,21 @@ int main(int argc, char* argv[]){
     // Open file
     file = fopen(argv[1], "r");
 
+    // 
+    myData->numberOfThreads = atoi(argv[2]);
+
     // Read data from file
     readFromFile(file, myData);
 
     // print Data for testing
-    
     prepareMatrices(myData);
+    prepareThreads(myData->numberOfThreads, myData->J_ORDER);
+
     JacobiRichardson(myData);
 
     // Free allocated memory
     freeData(myData);
+    free(pthreads);
 
     fclose(file);
 
@@ -124,21 +195,47 @@ void prepareMatrices(Data *data){
     // control variables
     int i, j;
     double currentDiagonal;
-        
+
     // For each item in the Matrix A ...
     for(i = 0; i < data->J_ORDER; i++){
-      
-       currentDiagonal = data->Ma[i][i];
 
-       data->Mb[i] = data->Mb[i] / currentDiagonal;
-       for(j = 0; j < data->J_ORDER; j++){
-           // We divide the position by the correpondent diagonal value
+        currentDiagonal = data->Ma[i][i];
+
+        data->Mb[i] = data->Mb[i] / currentDiagonal;
+        for(j = 0; j < data->J_ORDER; j++){
+            // We divide the position by the correpondent diagonal value
             //printf("%lf / %lf\n", data->Ma[i][j], currentDiagonal);
             data->Ma[i][j] = data->Ma[i][j] / currentDiagonal;
-       }
-       // Divide the array B by the respective diagonal value
-       data->Ma[i][i] = 0;
+        }
+        // Divide the array B by the respective diagonal value
+        data->Ma[i][i] = 0;
     }
+}
+
+void prepareThreads(int numberOfThreads, int matrixOrder){
+
+    int i;
+
+    // workload assigned to each thread
+    int workload;
+
+    // Allocate memory for threads
+    pthreads = (pthreadStructure*) malloc (sizeof(pthreadStructure) * numberOfThreads);
+
+    workload = matrixOrder / numberOfThreads;
+
+    int init = 0;
+    for(i = 0; i < numberOfThreads; i++){
+         pthreads->start = init;
+         pthreads->end = init + workload - 1;
+         init = init + workload;
+    }
+
+    // Initialize barrier
+    // The, NULL for de default attrs
+    // the last parameter is the number of threads that must wait in the
+    // barrier before all the threads can proceed further
+    pthread_barrier_init(&barrier, NULL, numberOfThreads);
 }
 
 
@@ -171,14 +268,11 @@ void JacobiRichardson(Data *data){
 
     // The calculation is not over until the error is lesser than J_ERROR or
     // we haven't reach the maxium number of iterations allowed
-    
-    do{
-       
-        LRx(data, x_current, lrx_result);
-        for(i = 0; i < data->J_ORDER; i++){
-            x_next[i] = - lrx_result[i] + data->Mb[i];  
-        }
 
+    do{
+
+        //pthread_create(pthreads->pthread, NULL, &calculateBlock, );
+    
         // perform the error calculus
         error = getError(x_current, x_next, data->J_ORDER);
         iterations++; 
@@ -187,7 +281,6 @@ void JacobiRichardson(Data *data){
         temp = x_current;
         x_current = x_next;
         x_next = temp;
-
 
         // printf("error %lf > %lf data->J_ERROR\n", error, data->J_ERROR);
 
@@ -204,23 +297,23 @@ void JacobiRichardson(Data *data){
     printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
 }
 
+void* calculateBlock(ThreadData *tData){
 
-
-void LRx(Data *data, double* x_current, double* lrxresult){
-
-    int i, j, k;
+    int i, j; 
     double temp_result = 0;
 
-
-    for(i = 0; i < data->J_ORDER; i++){
+    for(i = tData->start; i < tData->end; i++){
         temp_result = 0;
-        for(j = 0; j < data->J_ORDER; j++){
-            temp_result = temp_result + data->Ma[i][j] *  x_current[j];
-
+        for(j = 0; j < tData->J_ORDER; j++){
+            temp_result = temp_result + tData->Ma[i][j] * tData->x_current[j];
         }
-        lrxresult[i] = temp_result;
+        tData->x_next[i] = - temp_result + tData->Mb[i];
     }
+
+    // wait all the other thread to proceed to the next iteration
+    pthread_barrier_wait(&barrier);
 }
+
 
 double getError(double *x_current, double *x_next, int size){
 
