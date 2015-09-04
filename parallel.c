@@ -16,29 +16,15 @@ typedef struct {
     
     int J_ORDER;
     int J_ROW_TEST;
-    double J_ERROR;
     int J_ITE_MAX;
+    double J_ERROR;
     double *testedRow;
     double testedB;
+    int numberOfThreads;
     double **Ma;
     double *Mb;
-    int numberOfThreads;
 
 } Data;
-
-// This structure is a workaround because the thread initialization function
-// receives only one argument
-typedef struct{
-    int start;
-    int end;
-    int J_ORDER;
-    double **Ma;
-    double *Mb;
-    double *x_current;
-    double *x_next;
-
-} ThreadData;
-
 
 /**
  *
@@ -49,18 +35,31 @@ typedef struct{
  *
  */
 typedef struct {
-
-    pthread_t pthread;
+    double J_ERROR;
+    int J_ITE_MAX;
+    int J_ORDER;
     int start;
     int end;
-} pthreadStructure;
+    double **Ma;
+    double *Mb;
+    
+} pthreadData;
 
-pthreadStructure *pthreads;
+
+pthread_t *pthreads;
+
+pthreadData *pthreadsData;
 
 // Barrier created to sync all the threads
 // This is necessary in order guarantee that all the threads are calculating
 // the same value of x (awnser array)
 pthread_barrier_t barrier;
+
+pthread_mutex_t lock;
+
+double* errorArray;
+double *x_current;
+double *x_next;
 
 /**
  * Read data from file.
@@ -102,21 +101,6 @@ void prepareMatrices(Data *data);
 void JacobiRichardson(Data *data);
 
 /**
- * Calcuates the aboslute error
- * E = || x_current - x_next || 
- *
- * The algorithm wont stop until E < J_ERROR
- *
- */
-double getError(double *x_current, double *x_next, int size);
-
-/**
- * Calculates -(L* + R*)x
- *
- */
-void LRx(Data *data, double* x_current, double* x_next);
-
-/**
  * Function that shall be passed to each thread
  * 
  * Each thread will be responsible for a part of the matrix. We will divide the
@@ -136,14 +120,14 @@ void LRx(Data *data, double* x_current, double* x_next);
  * (also know as xk+1)
  *
  */
-void* calculateBlock(ThreadData *tData);
+void* calculateBlock(void *rawData);
 
 /**
  * Set the workload of each thread according to the matrix order and number of
  * threads available. Threads are global, so it does required any parameters
  *
  */
-void prepareThreads(int numberOfThreads, int matrixOrder);
+void prepareThreads(Data* data);
 
 /**
  * Main function
@@ -176,13 +160,12 @@ int main(int argc, char* argv[]){
 
     // print Data for testing
     prepareMatrices(myData);
-    prepareThreads(myData->numberOfThreads, myData->J_ORDER);
+    prepareThreads(myData);
 
     JacobiRichardson(myData);
 
     // Free allocated memory
     freeData(myData);
-    free(pthreads);
 
     fclose(file);
 
@@ -212,22 +195,31 @@ void prepareMatrices(Data *data){
     }
 }
 
-void prepareThreads(int numberOfThreads, int matrixOrder){
+void prepareThreads(Data *data){
 
     int i;
 
     // workload assigned to each thread
     int workload;
 
+    errorArray = (double*) malloc(sizeof(double) * data->J_ORDER);
     // Allocate memory for threads
-    pthreads = (pthreadStructure*) malloc (sizeof(pthreadStructure) * numberOfThreads);
+    pthreadsData = (pthreadData*) malloc (sizeof(pthreadData) * data->numberOfThreads);
+    pthreads = (pthread_t*) malloc (sizeof(pthread_t) * data->numberOfThreads);
 
-    workload = matrixOrder / numberOfThreads;
+    pthread_mutex_init(&lock, NULL);
+
+    workload = data->J_ORDER / data->numberOfThreads;
 
     int init = 0;
-    for(i = 0; i < numberOfThreads; i++){
-         pthreads->start = init;
-         pthreads->end = init + workload - 1;
+    for(i = 0; i < data->numberOfThreads; i++){
+         pthreadsData[i].J_ORDER = data->J_ORDER;
+         pthreadsData[i].J_ERROR = data->J_ERROR;
+         pthreadsData[i].J_ITE_MAX = data->J_ITE_MAX;
+         pthreadsData[i].start = init;
+         pthreadsData[i].end = init + workload - 1;
+         pthreadsData[i].Ma = data->Ma;
+         pthreadsData[i].Mb = data->Mb;
          init = init + workload;
     }
 
@@ -235,7 +227,7 @@ void prepareThreads(int numberOfThreads, int matrixOrder){
     // The, NULL for de default attrs
     // the last parameter is the number of threads that must wait in the
     // barrier before all the threads can proceed further
-    pthread_barrier_init(&barrier, NULL, numberOfThreads);
+    pthread_barrier_init(&barrier, NULL, data->numberOfThreads);
 }
 
 
@@ -244,47 +236,24 @@ void JacobiRichardson(Data *data){
     // Control variables
     int i, j;
 
+   
     // Current x value, initial value is 0 for sake of simplicity
-    double* x_current;
-
-    // X(k+1)
-    double* x_next;   
-
-    // (L* + R*)x_current
-    double* lrx_result;
-
-    // Error variable
-    double error;
-
-    // Variable to keep track the number of iterations
-    int iterations = 0;
-
     // Allocates memory for the x values, 
     // the starting point is 0 so we can use calloc to allocate memory here
     // final awnser will be placed at x_next
     x_current = (double*) calloc(sizeof(double), data->J_ORDER);
     x_next = (double*) malloc(sizeof(double) * data->J_ORDER);
-    lrx_result = (double*) malloc(sizeof(double) * data->J_ORDER);
 
     // The calculation is not over until the error is lesser than J_ERROR or
     // we haven't reach the maxium number of iterations allowed
 
-    do{
-
-        //pthread_create(pthreads->pthread, NULL, &calculateBlock, );
+    for(i = 0; i < data->numberOfThreads; i++){
+        pthread_create(&pthreads[i], NULL, &calculateBlock, &(pthreadsData[i]));
+    }
     
-        // perform the error calculus
-        error = getError(x_current, x_next, data->J_ORDER);
-        iterations++; 
-
-        double* temp;
-        temp = x_current;
-        x_current = x_next;
-        x_next = temp;
-
-        // printf("error %lf > %lf data->J_ERROR\n", error, data->J_ERROR);
-
-    } while (error > data->J_ERROR && iterations < data->J_ITE_MAX);
+    for(i = 0; i < data->numberOfThreads; i++){
+        pthread_join(pthreads[i], NULL);
+    }
 
     // Calculates the value for row J_ROW_TEST
     double row_test_result = 0;
@@ -293,46 +262,55 @@ void JacobiRichardson(Data *data){
     for(i = 0; i < data->J_ORDER; i++){
         result = result + data->testedRow[i]*x_current[i];  
     }
-    printf("Iterations: %d\n", iterations);
+    //printf("Iterations: %d\n", iterations);
     printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
 }
 
-void* calculateBlock(ThreadData *tData){
+void* calculateBlock(void* rawData){
 
-    int i, j; 
+    pthreadData* tData = (pthreadData*) rawData;
+    int i, j, k; 
     double temp_result = 0;
+    double temp;
+    double maxError;
 
-    for(i = tData->start; i < tData->end; i++){
-        temp_result = 0;
-        for(j = 0; j < tData->J_ORDER; j++){
-            temp_result = temp_result + tData->Ma[i][j] * tData->x_current[j];
+    printf("start: %d\n", tData->start);
+    printf("end: %d\n", tData->end);
+
+    do{
+
+        for(i = tData->start; i <= tData->end; i++){
+            temp_result = 0;
+            for(j = 0; j < tData->J_ORDER; j++){
+               temp_result = temp_result + tData->Ma[i][j] * x_current[j];
+            }
+            x_next[i] = - temp_result + tData->Mb[i];
+
+            errorArray[i] = fabs((x_next[i] - x_current[i])/ x_next[i]);
+
         }
-        tData->x_next[i] = - temp_result + tData->Mb[i];
-    }
 
-    // wait all the other thread to proceed to the next iteration
-    pthread_barrier_wait(&barrier);
-}
+        for(i = tData->start; i <= tData->end; i++){
+            temp = x_current[i];
+            x_current[i]  = x_next[i];
+            x_next[i] = temp;
+        }
 
+        // wait all the other thread to proceed to the next iteration
 
-double getError(double *x_current, double *x_next, int size){
+        pthread_barrier_wait(&barrier);
 
-    double error = 0;
-    double errorArray[size];
+        pthread_mutex_lock(&lock);
 
-    int i;
+        maxError = errorArray[0];
+        for(i = 1; i < tData->J_ORDER; i++){
+            if(errorArray[i] > maxError)
+                maxError = errorArray[i];
+        }
 
-    for(i = 0; i < size; i++){
-        errorArray[i] = fabs((x_next[i] - x_current[i])/ x_next[i]);
-    }
+        pthread_mutex_unlock(&lock);
 
-    double max = errorArray[0];
-    for(i = 1; i <size; i++){
-        if(errorArray[i] > max)
-            max = errorArray[i];
-    }
-
-    return max;
+    } while (maxError > tData->J_ERROR);
 }
 
 int readFromFile(FILE *file, Data *data){
@@ -412,4 +390,7 @@ void freeData(Data *data){
 
     // finally free the structure
     free(data);
+
+    pthread_mutex_destroy(&lock);
+    pthread_barrier_destroy(&barrier);
 }
