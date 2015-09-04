@@ -297,9 +297,7 @@ void* calculateBlock(void* rawData){
         }
 
         // wait all the other thread to proceed to the next iteration
-
         pthread_barrier_wait(&barrier);
-
         pthread_mutex_lock(&lock);
 
         maxError = errorArray[0];
