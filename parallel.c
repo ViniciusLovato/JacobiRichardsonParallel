@@ -29,8 +29,7 @@ typedef struct {
 
 /**
  *
- * For the sake of simplicty this variables will be declared as global. Dont
- * worry, I know what I'm doing
+ * For the sake of simplicty this variables will be declared as global.
  *
  * Threads used to calculate each matrix block
  *
@@ -64,6 +63,7 @@ double* errorArray;
 double *x_current;
 double *x_next;
 double average;
+int iterations = 0;
 /**
  * Read data from file.
  * file: The pointer to the file that contains the data
@@ -174,8 +174,8 @@ int main(int argc, char* argv[]){
 
     }
     
-    fprintf(outputFile, "\nAverage: %lf\n", average/1);
-    //printf("Number of Iterations: %d\n", iterations);
+    fprintf(outputFile, "\nAverage: %lf\n", average/10);
+    printf("Number of Iterations: %d\n", iterations);
     printf("Time Average: %lf\n", average/10);
 
 
@@ -284,7 +284,7 @@ void JacobiRichardson(Data *data){
 
     fprintf(outputFile, "===========================================\n");
     fprintf(outputFile, "Time Spent %lf\n" , time_spent);
-    //fprintf(outputFile, "Iteraiotns %d\n", iterations);
+    fprintf(outputFile, "Iterations %d\n", iterations);
     fprintf(outputFile, "RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
     //printf("Iterations: %d\n", iterations);
     //printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
@@ -296,7 +296,6 @@ void* calculateBlock(void* rawData){
     int i, j, k; 
     double temp_result = 0;
     double temp;
-    int iteration=0;
     double maxError = 100;
     //printf("start: %d\n", tData->start);
     //printf("end: %d\n", tData->end);
@@ -339,9 +338,11 @@ void* calculateBlock(void* rawData){
 
         //printf("\nDepois barreira\n");
 
-        pthread_barrier_wait(&barrier);
+        int r = pthread_barrier_wait(&barrier);
 
-        iteration++;
+        if(r == -1){
+             iterations++;
+        }
 
         maxError = errorArray[0];
         for(i = 0; i < tData->J_ORDER; i++){
@@ -350,10 +351,7 @@ void* calculateBlock(void* rawData){
         }
         pthread_barrier_wait(&barrier);
 
-    } while (maxError > tData->J_ERROR && iteration < tData->J_ITE_MAX);
-
-    printf("iterations number %d\n", iteration);
-
+    } while (maxError > tData->J_ERROR && iterations < tData->J_ITE_MAX);
 }
 
 int readFromFile(FILE *file, Data *data){
