@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include <math.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -58,9 +59,11 @@ pthread_barrier_t barrier;
 
 pthread_mutex_t lock;
 
+FILE *outputFile;
 double* errorArray;
 double *x_current;
 double *x_next;
+double average;
 /**
  * Read data from file.
  * file: The pointer to the file that contains the data
@@ -138,36 +141,45 @@ int main(int argc, char* argv[]){
     int i, j;
 
     // if the user has not passed the file path as argument
-    if(argc < 3){
-        printf("Invalid number of arguments: ./main matrix.txt THREADS_NUMBER\n");
+    if(argc < 4){
+        printf("Invalid number of arguments: ./main matrix.txt outputFile THREADS_NUMBER\n");
         return 1;
     }
 
     Data *myData;
     FILE *file;
-
     // Allocate memory
-    myData = (Data*) malloc (sizeof(Data));
 
-    // Open file
-    file = fopen(argv[1], "r");
+    outputFile = fopen(argv[2], "w");
+       // 
 
-    // 
-    myData->numberOfThreads = atoi(argv[2]);
+    for(i = 0; i < 10; i++){
 
-    // Read data from file
-    readFromFile(file, myData);
+        // Read data from file
 
-    // print Data for testing
-    prepareMatrices(myData);
-    prepareThreads(myData);
+        myData = (Data*) malloc (sizeof(Data));
+        myData->numberOfThreads = atoi(argv[3]);
+        file = fopen(argv[1], "r");
+        readFromFile(file, myData);
+        // print Data for testing
+    
+        prepareMatrices(myData);
+        prepareThreads(myData);
 
-    JacobiRichardson(myData);
+        JacobiRichardson(myData);
 
-    // Free allocated memory
-    freeData(myData);
+        // Free allocated memory
+        fclose(file);
+        freeData(myData);
 
-    fclose(file);
+    }
+    
+    fprintf(outputFile, "\nAverage: %lf\n", average/1);
+    //printf("Number of Iterations: %d\n", iterations);
+    printf("Time Average: %lf\n", average/10);
+
+
+    fclose(outputFile);
 
     return 0;
 }  
@@ -213,15 +225,15 @@ void prepareThreads(Data *data){
 
     int init = 0;
     for(i = 0; i < data->numberOfThreads; i++){
-         pthreadsData[i].J_ORDER = data->J_ORDER;
-         pthreadsData[i].J_ERROR = data->J_ERROR;
-         pthreadsData[i].J_ITE_MAX = data->J_ITE_MAX;
-         pthreadsData[i].start = init;
-         pthreadsData[i].end = init + workload;
-         pthreadsData[i].Ma = data->Ma;
-         pthreadsData[i].Mb = data->Mb;
-         pthreadsData[i].tNumber = i;
-         init = init + workload;
+        pthreadsData[i].J_ORDER = data->J_ORDER;
+        pthreadsData[i].J_ERROR = data->J_ERROR;
+        pthreadsData[i].J_ITE_MAX = data->J_ITE_MAX;
+        pthreadsData[i].start = init;
+        pthreadsData[i].end = init + workload;
+        pthreadsData[i].Ma = data->Ma;
+        pthreadsData[i].Mb = data->Mb;
+        pthreadsData[i].tNumber = i;
+        init = init + workload;
     }
 
     // Initialize barrier
@@ -236,8 +248,9 @@ void JacobiRichardson(Data *data){
 
     // Control variables
     int i, j;
+    clock_t begin, end;
+    double time_spent;
 
-   
     // Current x value, initial value is 0 for sake of simplicity
     // Allocates memory for the x values, 
     // the starting point is 0 so we can use calloc to allocate memory here
@@ -247,7 +260,7 @@ void JacobiRichardson(Data *data){
 
     // The calculation is not over until the error is lesser than J_ERROR or
     // we haven't reach the maxium number of iterations allowed
-
+    begin = clock();
     for(i = 0; i < data->numberOfThreads; i++){
         pthread_create(&pthreads[i], NULL, &calculateBlock, &(pthreadsData[i]));
     }
@@ -264,8 +277,17 @@ void JacobiRichardson(Data *data){
     for(i = 0; i < data->J_ORDER; i++){
         result = result + data->testedRow[i]*x_current[i];  
     }
+    end = clock();
+    time_spent = (double) (end - begin) / CLOCKS_PER_SEC;
+    
+    average = average + time_spent;
+
+    fprintf(outputFile, "===========================================\n");
+    fprintf(outputFile, "Time Spent %lf\n" , time_spent);
+    //fprintf(outputFile, "Iteraiotns %d\n", iterations);
+    fprintf(outputFile, "RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
     //printf("Iterations: %d\n", iterations);
-    printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
+    //printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
 }
 
 void* calculateBlock(void* rawData){
@@ -284,7 +306,7 @@ void* calculateBlock(void* rawData){
         for(i = tData->start; i < tData->end; i++){
             temp_result = 0;
             for(j = 0; j < tData->J_ORDER; j++){
-               temp_result = temp_result + tData->Ma[i][j] * x_current[j];
+                temp_result = temp_result + tData->Ma[i][j] * x_current[j];
             }
             x_next[i] = - temp_result + tData->Mb[i];
 
@@ -299,34 +321,33 @@ void* calculateBlock(void* rawData){
             x_next[i] = temp;
         }
         /*printf("\n Current: " );
-        for(k = 0; k < tData->J_ORDER; k++){
-            printf("%lf ", x_next[k]);
-        }
+          for(k = 0; k < tData->J_ORDER; k++){
+          printf("%lf ", x_next[k]);
+          }
 
 
-        printf("Next: ");
-        for(k = 0; k < tData->J_ORDER; k++){
-            printf("%lf ", x_current[k]);
-        }
-        printf("\n");*/
+          printf("Next: ");
+          for(k = 0; k < tData->J_ORDER; k++){
+          printf("%lf ", x_current[k]);
+          }
+          printf("\n");*/
 
 
-       // printf("\nBarreira");
+        // printf("\nBarreira");
 
         // wait all the other thread to proceed to the next iteration
-        
+
         //printf("\nDepois barreira\n");
 
         pthread_barrier_wait(&barrier);
 
-    
         iteration++;
 
-            maxError = errorArray[0];
-            for(i = 0; i < tData->J_ORDER; i++){
-                if(errorArray[i] > maxError)
-                    maxError = errorArray[i];
-            }
+        maxError = errorArray[0];
+        for(i = 0; i < tData->J_ORDER; i++){
+            if(errorArray[i] > maxError)
+                maxError = errorArray[i];
+        }
         pthread_barrier_wait(&barrier);
 
     } while (maxError > tData->J_ERROR && iteration < tData->J_ITE_MAX);
@@ -409,9 +430,13 @@ void freeData(Data *data){
 
     // Free Mb pointer
     free(data->Mb);
+    
+    free(data->testedRow);
 
     // finally free the structure
     free(data);
+
+    free(errorArray);
 
     pthread_mutex_destroy(&lock);
     pthread_barrier_destroy(&barrier);
