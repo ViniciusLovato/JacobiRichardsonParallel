@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -25,6 +26,11 @@ typedef struct {
 
 } Data;
 
+FILE *outputFile;
+
+double average = 0;
+double standardDeviation = 0;
+int iterations = 0;
 /**
  * Read data from file.
  * file: The pointer to the file that contains the data
@@ -88,8 +94,8 @@ int main(int argc, char* argv[]){
     int i, j;
 
     // if the user has not passed the file path as argument
-    if(argc < 2){
-        printf("Invalid number of arguments: ./main matrix.txt\n");
+    if(argc < 3){
+        printf("Invalid number of arguments: ./main matrix.txt outputFile.txt\n");
         return 1;
     }
 
@@ -97,25 +103,37 @@ int main(int argc, char* argv[]){
     FILE *file;
 
     // Allocate memory
-    myData = (Data*) malloc (sizeof(Data));
 
     // Open file
-    file = fopen(argv[1], "r");
+    outputFile = fopen(argv[2], "w");
 
-    // Read data from file
-    readFromFile(file, myData);
 
-    // print Data for testing
-    
-    prepareMatrices(myData);
-    JacobiRichardson(myData);
+       for(i = 0; i < 10; i++){
+           // Read data from fileI
+           // print Data for testing
 
-    // Free allocated memory
-    freeData(myData);
+           iterations = 0;
 
-    fclose(file);
+           myData = (Data*) malloc (sizeof(Data));
+           file = fopen(argv[1], "r");
+           readFromFile(file, myData);
 
-    return 0;
+
+           prepareMatrices(myData);
+           JacobiRichardson(myData);
+
+           fclose(file);
+           freeData(myData);
+       }
+
+       fprintf(outputFile, "\nAverage: %lf\n", average/10);
+       printf("Number of Iterations: %d\n", iterations);
+       printf("Time Average: %lf\n", average/10);
+
+       // Free allocated memory
+       fclose(outputFile);
+
+       return 0;
 }  
 
 
@@ -124,20 +142,20 @@ void prepareMatrices(Data *data){
     // control variables
     int i, j;
     double currentDiagonal;
-        
+
     // For each item in the Matrix A ...
     for(i = 0; i < data->J_ORDER; i++){
-      
-       currentDiagonal = data->Ma[i][i];
 
-       data->Mb[i] = data->Mb[i] / currentDiagonal;
-       for(j = 0; j < data->J_ORDER; j++){
-           // We divide the position by the correpondent diagonal value
+        currentDiagonal = data->Ma[i][i];
+
+        data->Mb[i] = data->Mb[i] / currentDiagonal;
+        for(j = 0; j < data->J_ORDER; j++){
+            // We divide the position by the correpondent diagonal value
             //printf("%lf / %lf\n", data->Ma[i][j], currentDiagonal);
             data->Ma[i][j] = data->Ma[i][j] / currentDiagonal;
-       }
-       // Divide the array B by the respective diagonal value
-       data->Ma[i][i] = 0;
+        }
+        // Divide the array B by the respective diagonal value
+        data->Ma[i][i] = 0;
     }
 }
 
@@ -157,23 +175,25 @@ void JacobiRichardson(Data *data){
     double* lrx_result;
 
     // Error variable
-    double error;
+    double error = 100;
+
+    clock_t begin, end;
+    double time_spent;
 
     // Variable to keep track the number of iterations
-    int iterations = 0;
 
     // Allocates memory for the x values, 
     // the starting point is 0 so we can use calloc to allocate memory here
     // final awnser will be placed at x_next
     x_current = (double*) calloc(sizeof(double), data->J_ORDER);
-    x_next = (double*) malloc(sizeof(double) * data->J_ORDER);
+    x_next = (double*) calloc(sizeof(double), data->J_ORDER);
     lrx_result = (double*) malloc(sizeof(double) * data->J_ORDER);
 
     // The calculation is not over until the error is lesser than J_ERROR or
     // we haven't reach the maxium number of iterations allowed
-    
+    begin = clock();
     do{
-       
+
         LRx(data, x_current, lrx_result);
         for(i = 0; i < data->J_ORDER; i++){
             x_next[i] = - lrx_result[i] + data->Mb[i];  
@@ -200,8 +220,19 @@ void JacobiRichardson(Data *data){
     for(i = 0; i < data->J_ORDER; i++){
         result = result + data->testedRow[i]*x_current[i];  
     }
-    printf("Iterations: %d\n", iterations);
-    printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
+    end = clock();
+    time_spent = (double) (end - begin) / CLOCKS_PER_SEC;
+
+    free(x_current);
+    free(x_next);
+    free(lrx_result);
+
+    average = average + time_spent;
+
+    fprintf(outputFile, "===========================================\n");
+    fprintf(outputFile, "Time Spent %lf\n" , time_spent);
+    fprintf(outputFile, "Iteraiotns %d\n", iterations);
+    fprintf(outputFile, "RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
 }
 
 
@@ -313,6 +344,8 @@ void freeData(Data *data){
 
     // Free Ma pointer
     free(data->Ma);
+
+    free(data->testedRow);
 
     // Free Mb pointer
     free(data->Mb);

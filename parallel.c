@@ -42,6 +42,7 @@ typedef struct {
     int end;
     double **Ma;
     double *Mb;
+    int tNumber;
     
 } pthreadData;
 
@@ -60,7 +61,6 @@ pthread_mutex_t lock;
 double* errorArray;
 double *x_current;
 double *x_next;
-
 /**
  * Read data from file.
  * file: The pointer to the file that contains the data
@@ -217,9 +217,10 @@ void prepareThreads(Data *data){
          pthreadsData[i].J_ERROR = data->J_ERROR;
          pthreadsData[i].J_ITE_MAX = data->J_ITE_MAX;
          pthreadsData[i].start = init;
-         pthreadsData[i].end = init + workload - 1;
+         pthreadsData[i].end = init + workload;
          pthreadsData[i].Ma = data->Ma;
          pthreadsData[i].Mb = data->Mb;
+         pthreadsData[i].tNumber = i;
          init = init + workload;
     }
 
@@ -250,10 +251,11 @@ void JacobiRichardson(Data *data){
     for(i = 0; i < data->numberOfThreads; i++){
         pthread_create(&pthreads[i], NULL, &calculateBlock, &(pthreadsData[i]));
     }
-    
+
     for(i = 0; i < data->numberOfThreads; i++){
         pthread_join(pthreads[i], NULL);
     }
+
 
     // Calculates the value for row J_ROW_TEST
     double row_test_result = 0;
@@ -272,14 +274,14 @@ void* calculateBlock(void* rawData){
     int i, j, k; 
     double temp_result = 0;
     double temp;
-    double maxError;
-
-    printf("start: %d\n", tData->start);
-    printf("end: %d\n", tData->end);
+    int iteration=0;
+    double maxError = 100;
+    //printf("start: %d\n", tData->start);
+    //printf("end: %d\n", tData->end);
 
     do{
 
-        for(i = tData->start; i <= tData->end; i++){
+        for(i = tData->start; i < tData->end; i++){
             temp_result = 0;
             for(j = 0; j < tData->J_ORDER; j++){
                temp_result = temp_result + tData->Ma[i][j] * x_current[j];
@@ -290,25 +292,47 @@ void* calculateBlock(void* rawData){
 
         }
 
-        for(i = tData->start; i <= tData->end; i++){
+        pthread_barrier_wait(&barrier);
+        for(i = tData->start; i < tData->end; i++){
             temp = x_current[i];
             x_current[i]  = x_next[i];
             x_next[i] = temp;
         }
-
-        // wait all the other thread to proceed to the next iteration
-        pthread_barrier_wait(&barrier);
-        pthread_mutex_lock(&lock);
-
-        maxError = errorArray[0];
-        for(i = 1; i < tData->J_ORDER; i++){
-            if(errorArray[i] > maxError)
-                maxError = errorArray[i];
+        /*printf("\n Current: " );
+        for(k = 0; k < tData->J_ORDER; k++){
+            printf("%lf ", x_next[k]);
         }
 
-        pthread_mutex_unlock(&lock);
 
-    } while (maxError > tData->J_ERROR);
+        printf("Next: ");
+        for(k = 0; k < tData->J_ORDER; k++){
+            printf("%lf ", x_current[k]);
+        }
+        printf("\n");*/
+
+
+       // printf("\nBarreira");
+
+        // wait all the other thread to proceed to the next iteration
+        
+        //printf("\nDepois barreira\n");
+
+        pthread_barrier_wait(&barrier);
+
+    
+        iteration++;
+
+            maxError = errorArray[0];
+            for(i = 0; i < tData->J_ORDER; i++){
+                if(errorArray[i] > maxError)
+                    maxError = errorArray[i];
+            }
+        pthread_barrier_wait(&barrier);
+
+    } while (maxError > tData->J_ERROR && iteration < tData->J_ITE_MAX);
+
+    printf("iterations number %d\n", iteration);
+
 }
 
 int readFromFile(FILE *file, Data *data){
