@@ -223,8 +223,9 @@ void prepareThreads(Data *data){
     pthread_mutex_init(&lock, NULL);
 
     workload = data->J_ORDER / data->numberOfThreads;
-
+    int lastWorkload = data->J_ORDER % data->numberOfThreads;
     int init = 0;
+
     for(i = 0; i < data->numberOfThreads; i++){
         pthreadsData[i].J_ORDER = data->J_ORDER;
         pthreadsData[i].J_ERROR = data->J_ERROR;
@@ -237,6 +238,7 @@ void prepareThreads(Data *data){
         init = init + workload;
     }
 
+    pthreadsData[i-1].end += lastWorkload;
     // Initialize barrier
     // The, NULL for de default attrs
     // the last parameter is the number of threads that must wait in the
