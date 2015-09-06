@@ -108,7 +108,7 @@ int main(int argc, char* argv[]){
     outputFile = fopen(argv[2], "w");
 
 
-       for(i = 0; i < 1; i++){
+       for(i = 0; i < 10; i++){
            // Read data from fileI
            // print Data for testing
 
@@ -126,9 +126,9 @@ int main(int argc, char* argv[]){
            freeData(myData);
        }
 
-       fprintf(outputFile, "\nAverage: %lf\n", average);
+       fprintf(outputFile, "\nAverage: %lf\n", average/10);
        printf("Number of Iterations: %d\n", iterations);
-       printf("Time Average: %lf\n", average);
+       printf("Time Average: %lf\n", average/10);
 
        // Free allocated memory
        fclose(outputFile);
