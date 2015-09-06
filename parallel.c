@@ -342,9 +342,8 @@ void* calculateBlock(void* rawData){
 
         //printf("\nDepois barreira\n");
 
-        int r = pthread_barrier_wait(&barrier);
 
-        if(r == -1){
+        if(tData->tNumber == 0){
             iterations++;
         }
 
