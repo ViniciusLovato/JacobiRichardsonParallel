@@ -108,7 +108,7 @@ int main(int argc, char* argv[]){
     outputFile = fopen(argv[2], "w");
 
 
-       for(i = 0; i < 10; i++){
+       for(i = 0; i < 1; i++){
            // Read data from fileI
            // print Data for testing
 
@@ -126,9 +126,9 @@ int main(int argc, char* argv[]){
            freeData(myData);
        }
 
-       fprintf(outputFile, "\nAverage: %lf\n", average/10);
+       fprintf(outputFile, "\nAverage: %lf\n", average);
        printf("Number of Iterations: %d\n", iterations);
-       printf("Time Average: %lf\n", average/10);
+       printf("Time Average: %lf\n", average);
 
        // Free allocated memory
        fclose(outputFile);
@@ -177,7 +177,7 @@ void JacobiRichardson(Data *data){
     // Error variable
     double error = 100;
 
-    clock_t begin, end;
+    struct timespec start, finish;
     double time_spent;
 
     // Variable to keep track the number of iterations
@@ -191,7 +191,8 @@ void JacobiRichardson(Data *data){
 
     // The calculation is not over until the error is lesser than J_ERROR or
     // we haven't reach the maxium number of iterations allowed
-    begin = clock();
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
     do{
 
         LRx(data, x_current, lrx_result);
@@ -220,8 +221,11 @@ void JacobiRichardson(Data *data){
     for(i = 0; i < data->J_ORDER; i++){
         result = result + data->testedRow[i]*x_current[i];  
     }
-    end = clock();
-    time_spent = (double) (end - begin) / CLOCKS_PER_SEC;
+
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+
+    time_spent = (finish.tv_sec - start.tv_sec);
+    time_spent += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
 
     free(x_current);
     free(x_next);
@@ -231,7 +235,7 @@ void JacobiRichardson(Data *data){
 
     fprintf(outputFile, "===========================================\n");
     fprintf(outputFile, "Time Spent %lf\n" , time_spent);
-    fprintf(outputFile, "Iteraiotns %d\n", iterations);
+    fprintf(outputFile, "Iterations %d\n", iterations);
     fprintf(outputFile, "RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
 }
 

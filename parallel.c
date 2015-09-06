@@ -56,14 +56,14 @@ pthreadData *pthreadsData;
 // the same value of x (awnser array)
 pthread_barrier_t barrier;
 
-pthread_mutex_t lock;
 
 FILE *outputFile;
 double* errorArray;
 double *x_current;
 double *x_next;
-double average;
+double average = 0;
 int iterations = 0;
+double maxError = 100;
 /**
  * Read data from file.
  * file: The pointer to the file that contains the data
@@ -153,7 +153,7 @@ int main(int argc, char* argv[]){
     outputFile = fopen(argv[2], "w");
        // 
 
-    for(i = 0; i < 10; i++){
+    for(i = 0; i < 1; i++){
 
         // Read data from file
 
@@ -175,9 +175,9 @@ int main(int argc, char* argv[]){
 
     }
     
-    fprintf(outputFile, "\nAverage: %lf\n", average/10);
+    fprintf(outputFile, "\nAverage: %lf\n", average);
     printf("Number of Iterations: %d\n", iterations);
-    printf("Time Average: %lf\n", average/10);
+    printf("Time Average: %lf\n", average);
 
 
     fclose(outputFile);
@@ -220,7 +220,6 @@ void prepareThreads(Data *data){
     pthreadsData = (pthreadData*) malloc (sizeof(pthreadData) * data->numberOfThreads);
     pthreads = (pthread_t*) malloc (sizeof(pthread_t) * data->numberOfThreads);
 
-    pthread_mutex_init(&lock, NULL);
 
     workload = data->J_ORDER / data->numberOfThreads;
     int lastWorkload = data->J_ORDER % data->numberOfThreads;
@@ -251,7 +250,7 @@ void JacobiRichardson(Data *data){
 
     // Control variables
     int i, j;
-    clock_t begin, end;
+    struct timespec start, finish;
     double time_spent;
 
     // Current x value, initial value is 0 for sake of simplicity
@@ -263,14 +262,15 @@ void JacobiRichardson(Data *data){
 
     // The calculation is not over until the error is lesser than J_ERROR or
     // we haven't reach the maxium number of iterations allowed
-    begin = clock();
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
     for(i = 0; i < data->numberOfThreads; i++){
         pthread_create(&pthreads[i], NULL, &calculateBlock, &(pthreadsData[i]));
     }
-
+ 
     for(i = 0; i < data->numberOfThreads; i++){
-        pthread_join(pthreads[i], NULL);
-    }
+	    pthread_join(pthreads[i], NULL);
+    }   
 
 
     // Calculates the value for row J_ROW_TEST
@@ -280,9 +280,12 @@ void JacobiRichardson(Data *data){
     for(i = 0; i < data->J_ORDER; i++){
         result = result + data->testedRow[i]*x_current[i];  
     }
-    end = clock();
-    time_spent = (double) (end - begin) / CLOCKS_PER_SEC;
-    
+
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+
+    time_spent = (finish.tv_sec - start.tv_sec);
+    time_spent += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
+
     average = average + time_spent;
 
     fprintf(outputFile, "===========================================\n");
@@ -296,150 +299,146 @@ void JacobiRichardson(Data *data){
 
 void* calculateBlock(void* rawData){
 
-    pthreadData* tData = (pthreadData*) rawData;
-    int i, j, k; 
-    double temp_result = 0;
-    double temp;
-    double maxError = 100;
-    //printf("start: %d\n", tData->start);
-    //printf("end: %d\n", tData->end);
+	pthreadData* tData = (pthreadData*) rawData;
+	int i, j, k; 
+	double temp_result = 0;
+	double* temp;
 
-    do{
-        
-        for(i = tData->start; i < tData->end; i++){
-            temp_result = 0;
-            for(j = 0; j < tData->J_ORDER; j++){
-                temp_result = temp_result + tData->Ma[i][j] * x_current[j];
-           }
-            x_next[i] = - temp_result + tData->Mb[i];
+	//printf("start: %d\n", tData->start);
+	//printf("end: %d\n", tData->end);
 
-            errorArray[i] = fabs((x_next[i] - x_current[i])/ x_next[i]);
+	do{
 
-        }
+		for(i = tData->start; i < tData->end; i++){
+			temp_result = 0;
+			for(j = 0; j < tData->J_ORDER; j++){
+				temp_result = temp_result + tData->Ma[i][j] * x_current[j];
+			}
+			x_next[i] = - temp_result + tData->Mb[i];
 
-        pthread_barrier_wait(&barrier);
-        for(i = tData->start; i < tData->end; i++){
-            temp = x_current[i];
-            x_current[i]  = x_next[i];
-            x_next[i] = temp;
-        }
-        /*printf("\n Current: " );
-          for(k = 0; k < tData->J_ORDER; k++){
-          printf("%lf ", x_next[k]);
-          }
+			errorArray[i] = fabs((x_next[i] - x_current[i])/ x_next[i]);
 
+		}
 
-          printf("Next: ");
-          for(k = 0; k < tData->J_ORDER; k++){
-          printf("%lf ", x_current[k]);
-          }
-          printf("\n");*/
+		int r = pthread_barrier_wait(&barrier);
 
+		if(r == - 1){
+			temp = x_current;
+			x_current = x_next;
+			x_next = temp;	
+			iterations++;
 
-        // printf("\nBarreira");
-
-        // wait all the other thread to proceed to the next iteration
-
-        //printf("\nDepois barreira\n");
+			maxError = errorArray[0];
+			for(i = 1; i < tData->J_ORDER; i++){
+				if(errorArray[i] > maxError)
+					maxError = errorArray[i];
+			}
+		}
+		/*printf("\n Current: " );
+		  for(k = 0; k < tData->J_ORDER; k++){
+		  printf("%lf ", x_next[k]);
+		  }
 
 
-        if(tData->tNumber == 0){
-            iterations++;
-        }
+		  printf("Next: ");
+		  for(k = 0; k < tData->J_ORDER; k++){
+		  printf("%lf ", x_current[k]);
+		  }
+		  printf("\n");*/
 
-        maxError = errorArray[0];
-        for(i = 0; i < tData->J_ORDER; i++){
-            if(errorArray[i] > maxError)
-                maxError = errorArray[i];
-        }
 
-        pthread_barrier_wait(&barrier);
-    } while (maxError > tData->J_ERROR && iterations < tData->J_ITE_MAX);
-   
+		// printf("\nBarreira");
+
+		// wait all the other thread to proceed to the next iteration
+
+		//printf("\nDepois barreira\n");
+
+		pthread_barrier_wait(&barrier);
+	} while (maxError > tData->J_ERROR && iterations < tData->J_ITE_MAX);
+
 }
 
 int readFromFile(FILE *file, Data *data){
 
-    int i, j;
+	int i, j;
 
-    // Reading data about the problem metadata. Matrix order, row used for
-    // testing purposes, acceptable error value and max number of iterations
-    fscanf(file, "%d%d%lf%d", &data->J_ORDER, &data->J_ROW_TEST, &data->J_ERROR, &data->J_ITE_MAX);
+	// Reading data about the problem metadata. Matrix order, row used for
+	// testing purposes, acceptable error value and max number of iterations
+	fscanf(file, "%d%d%lf%d", &data->J_ORDER, &data->J_ROW_TEST, &data->J_ERROR, &data->J_ITE_MAX);
 
-    // Allocating memory for Matrix A
-    data->Ma = (double**) malloc(sizeof(double*)*data->J_ORDER);
-    for(i = 0; i < data->J_ORDER; i++){
-        data->Ma[i] = (double*) malloc(sizeof(double)*data->J_ORDER);
-    }
+	// Allocating memory for Matrix A
+	data->Ma = (double**) malloc(sizeof(double*)*data->J_ORDER);
+	for(i = 0; i < data->J_ORDER; i++){
+		data->Ma[i] = (double*) malloc(sizeof(double)*data->J_ORDER);
+	}
 
-    // Reading Matrix A from file
-    for(i = 0; i < data->J_ORDER; i++){
-        for(j = 0; j < data->J_ORDER; j++){
-            fscanf(file, "%lf", &data->Ma[i][j]);
-        }
-    }  
+	// Reading Matrix A from file
+	for(i = 0; i < data->J_ORDER; i++){
+		for(j = 0; j < data->J_ORDER; j++){
+			fscanf(file, "%lf", &data->Ma[i][j]);
+		}
+	}  
 
-    // Allocating memory for B array
-    data->Mb = (double*) malloc(sizeof(double)*data->J_ORDER);
+	// Allocating memory for B array
+	data->Mb = (double*) malloc(sizeof(double)*data->J_ORDER);
 
-    // Reading Array B from file
-    for(i = 0; i < data->J_ORDER; i++){
-        fscanf(file, "%lf", &data->Mb[i]);
-    }
+	// Reading Array B from file
+	for(i = 0; i < data->J_ORDER; i++){
+		fscanf(file, "%lf", &data->Mb[i]);
+	}
 
-    data->testedRow = (double*) malloc(sizeof(double)*data->J_ORDER);
-    for(i = 0; i < data->J_ORDER; i++){
-        data->testedRow[i] = data->Ma[data->J_ROW_TEST][i];
-    }
+	data->testedRow = (double*) malloc(sizeof(double)*data->J_ORDER);
+	for(i = 0; i < data->J_ORDER; i++){
+		data->testedRow[i] = data->Ma[data->J_ROW_TEST][i];
+	}
 
-    data->testedB = data->Mb[data->J_ROW_TEST];
+	data->testedB = data->Mb[data->J_ROW_TEST];
 }
 
 
 
 void printData(Data data){
 
-    int i, j;
+	int i, j;
 
-    printf("\nPrint Data\n");
-    printf("=================================\n");
+	printf("\nPrint Data\n");
+	printf("=================================\n");
 
-    printf("J_ORDER: %d\nJ_ROW_TEST: %d\nJ_ERROR: %lf\n", data.J_ORDER, data.J_ROW_TEST, data.J_ERROR);
+	printf("J_ORDER: %d\nJ_ROW_TEST: %d\nJ_ERROR: %lf\n", data.J_ORDER, data.J_ROW_TEST, data.J_ERROR);
 
-    for(i = 0; i < data.J_ORDER; i++){
-        for(j = 0; j < data.J_ORDER; j++){
-            printf("%lf ", data.Ma[i][j]);
-        }
-        printf("\n");
-    }
-    for(i = 0; i < data.J_ORDER; i++){
-        printf("%lf \n", data.Mb[i]);
-    }
+	for(i = 0; i < data.J_ORDER; i++){
+		for(j = 0; j < data.J_ORDER; j++){
+			printf("%lf ", data.Ma[i][j]);
+		}
+		printf("\n");
+	}
+	for(i = 0; i < data.J_ORDER; i++){
+		printf("%lf \n", data.Mb[i]);
+	}
 
 }
 
 void freeData(Data *data){
 
-    int i, j;
+	int i, j;
 
-    // Free all the columns 
-    for(i = 0; i < data->J_ORDER; i++){
-        free(data->Ma[i]); 
-    }
+	// Free all the columns 
+	for(i = 0; i < data->J_ORDER; i++){
+		free(data->Ma[i]); 
+	}
 
-    // Free Ma pointer
-    free(data->Ma);
+	// Free Ma pointer
+	free(data->Ma);
 
-    // Free Mb pointer
-    free(data->Mb);
+	// Free Mb pointer
+	free(data->Mb);
 
-    free(data->testedRow);
+	free(data->testedRow);
 
-    // finally free the structure
-    free(data);
+	// finally free the structure
+	free(data);
 
-    free(errorArray);
+	free(errorArray);
 
-    pthread_mutex_destroy(&lock);
-    pthread_barrier_destroy(&barrier);
+	pthread_barrier_destroy(&barrier);
 }

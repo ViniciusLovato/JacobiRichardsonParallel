@@ -1,9 +1,11 @@
 echo -e "Starting tests ....\n"
-echo -e "\nMatrix 1000x1000 3 threads"
-./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_3 3
-echo -e "\nMatrix 1000x1000 5 threads"
-./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_5 5
-echo -e "\nMatrix 1000x1000 7 threads"
-./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_7 7 
+echo -e "Matrix 1000x1000 2 threads"
+./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_2 2
+echo -e "\nMatrix 1000x1000 4 threads"
+./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_4 4
+echo -e "\nMatrix 1000x1000 6 threads"
+./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_6 6 
+echo -e "\nMatrix 1000x1000 8 threads"
+./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_8 8
 echo -e "\nMatrix 1000x1000 10 threads"
 ./parallel matrices/matriz1000.txt output/parallel/matrix1000/output1000_10 10
