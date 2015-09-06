@@ -157,6 +157,7 @@ int main(int argc, char* argv[]){
 
         // Read data from file
 
+        iterations = 0;
         myData = (Data*) malloc (sizeof(Data));
         myData->numberOfThreads = atoi(argv[3]);
         file = fopen(argv[1], "r");
@@ -286,6 +287,7 @@ void JacobiRichardson(Data *data){
     fprintf(outputFile, "Time Spent %lf\n" , time_spent);
     fprintf(outputFile, "Iterations %d\n", iterations);
     fprintf(outputFile, "RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
+
     //printf("Iterations: %d\n", iterations);
     //printf("RowTest: %d => [%lf] =? [%lf]\n", data->J_ROW_TEST, result, data->testedB);
 }
@@ -301,12 +303,12 @@ void* calculateBlock(void* rawData){
     //printf("end: %d\n", tData->end);
 
     do{
-
+        
         for(i = tData->start; i < tData->end; i++){
             temp_result = 0;
             for(j = 0; j < tData->J_ORDER; j++){
                 temp_result = temp_result + tData->Ma[i][j] * x_current[j];
-            }
+           }
             x_next[i] = - temp_result + tData->Mb[i];
 
             errorArray[i] = fabs((x_next[i] - x_current[i])/ x_next[i]);
@@ -341,7 +343,7 @@ void* calculateBlock(void* rawData){
         int r = pthread_barrier_wait(&barrier);
 
         if(r == -1){
-             iterations++;
+            iterations++;
         }
 
         maxError = errorArray[0];
@@ -349,9 +351,10 @@ void* calculateBlock(void* rawData){
             if(errorArray[i] > maxError)
                 maxError = errorArray[i];
         }
-        pthread_barrier_wait(&barrier);
 
+        pthread_barrier_wait(&barrier);
     } while (maxError > tData->J_ERROR && iterations < tData->J_ITE_MAX);
+   
 }
 
 int readFromFile(FILE *file, Data *data){
@@ -428,7 +431,7 @@ void freeData(Data *data){
 
     // Free Mb pointer
     free(data->Mb);
-    
+
     free(data->testedRow);
 
     // finally free the structure
